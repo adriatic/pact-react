@@ -1,30 +1,16 @@
 import { useState } from "react";
 
-const ALL_MODELS = ["GPT", "Claude", "Gemini"];
-
-type ModelResult = {
-  model: string;
-  response: string;
-};
-
 type RunRecord = {
   runId: number;
-  compiledPrompt: string;
-  results: ModelResult[];
+  version: number;
+  response: string;
 };
 
 type Cell = {
   id: string;
   prompt: string;
-  compiledPrompt?: string;
-  response: string;
+  version: number;
   history: RunRecord[];
-  status: "idle" | "running";
-  runId?: number;
-
-  mode: "single" | "compare";
-  selectedModel: string;
-  compareModels: string[];
 };
 
 export default function App() {
@@ -32,163 +18,180 @@ export default function App() {
     {
       id: "prompt-01",
       prompt: "Explain PACT architecture",
-      compiledPrompt: "",
-      response: "",
+      version: 0,
       history: [],
-      status: "idle",
-      mode: "single",
-      selectedModel: "GPT",
-      compareModels: ["GPT", "Claude"],
     },
   ]);
 
   const [activeIndex, setActiveIndex] = useState(0);
-  const [showInternal, setShowInternal] = useState(false);
-  const [runCounter, setRunCounter] = useState(1);
-  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(true);
+  const [showRaw, setShowRaw] = useState(false);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
+  const [selectedRuns, setSelectedRuns] = useState<number[]>([]);
 
   const activeCell = cells[activeIndex];
 
-  // 🔥 Create cell
-  const createCell = () => {
+  const newPrompt = () => {
     const newCell: Cell = {
       id: `prompt-${String(cells.length + 1).padStart(2, "0")}`,
       prompt: "",
-      compiledPrompt: "",
-      response: "",
+      version: 0,
       history: [],
-      status: "idle",
-      mode: "single",
-      selectedModel: "GPT",
-      compareModels: ["GPT", "Claude"],
     };
 
     setCells((prev) => [...prev, newCell]);
     setActiveIndex(cells.length);
+    setIsEditing(true);
+    setShowRaw(false);
+    setSelectedRuns([]);
   };
 
-  const setMode = (mode: "single" | "compare") => {
-    setCells((prev) =>
-      prev.map((c, i) =>
-        i === activeIndex ? { ...c, mode } : c
-      )
-    );
+  const editPrompt = () => {
+    if (showRaw) {
+      alert("Switching to Normal view to edit");
+      setShowRaw(false);
+    }
+    setIsEditing(true);
   };
 
-  const selectModel = (model: string) => {
-    setCells((prev) =>
-      prev.map((c, i) =>
-        i === activeIndex ? { ...c, selectedModel: model } : c
-      )
-    );
+  const toggleView = () => {
+    setShowRaw((v) => !v);
   };
 
-  const toggleCompareModel = (model: string) => {
+  const runCell = () => {
+    const runId = Date.now();
+
     setCells((prev) =>
       prev.map((c, i) => {
         if (i !== activeIndex) return c;
 
-        const exists = c.compareModels.includes(model);
+        const newVersion = c.version + 1;
+
+        let response = "";
+
+        if (newVersion === 1) {
+          response = `PACT (Prompt-Aware Computational Tooling) is an architectural paradigm that transforms conversational AI into deterministic execution units.
+
+Each prompt becomes a reproducible computational step, similar to a notebook cell. This enables traceability, versioning, and structured interaction.
+
+PACT introduces a notebook-based interaction model where prompts are versioned, executed, and compared. Each execution produces a run with a unique identifier, allowing users to inspect and reproduce results.
+
+The architecture enforces separation between draft and executed prompts, ensuring that executed states remain immutable. This guarantees reproducibility.
+
+PACT also introduces deterministic traceability, allowing users to audit how outputs were generated.
+
+Overall, PACT replaces informal chat with structured computation.`;
+        } else if (newVersion === 2) {
+          response = `PACT (Prompt-Aware Computational Tooling) is a structured execution framework that transforms AI interaction into a reproducible computational workflow.
+
+Key Features:
+
+1. Prompt as Execution Unit  
+Each prompt is a runnable entity producing versioned outputs.
+
+2. Versioned Execution  
+Each run increments a version (v1, v2...), enabling comparison.
+
+3. Run IDs  
+Every execution is uniquely identified.
+
+4. Draft vs Executed Separation  
+Editable prompts are distinct from executed snapshots.
+
+5. Built-in Comparison  
+Users can compare outputs across versions to understand prompt impact.
+
+6. Multi-model Readiness  
+Designed for GPT, Claude, Gemini comparison.
+
+7. Structured Representation  
+Separates system instructions from user prompts.
+
+PACT turns prompt engineering into a disciplined, inspectable process.`;
+        } else {
+          response = `Executed (v${newVersion}): ${c.prompt}`;
+        }
 
         return {
           ...c,
-          compareModels: exists
-            ? c.compareModels.filter((m) => m !== model)
-            : [...c.compareModels, model],
+          version: newVersion,
+          history: [
+            ...c.history,
+            {
+              runId,
+              version: newVersion,
+              response,
+            },
+          ],
         };
       })
     );
+
+    setIsEditing(false);
+    setShowRaw(false);
+    setSelectedRuns([]);
   };
 
-  const runCell = () => {
-    const runId = runCounter;
-    setRunCounter((r) => r + 1);
-
-    setCells((prev) =>
-      prev.map((c, i) =>
-        i === activeIndex ? { ...c, status: "running", runId } : c
-      )
+  const toggleRunSelection = (runId: number) => {
+    setSelectedRuns((prev) =>
+      prev.includes(runId)
+        ? prev.filter((id) => id !== runId)
+        : [...prev, runId]
     );
-
-    setTimeout(() => {
-      setCells((prev) =>
-        prev.map((c, i) => {
-          if (i !== activeIndex) return c;
-
-          const models =
-            c.mode === "single"
-              ? [c.selectedModel]
-              : c.compareModels;
-
-          const results: ModelResult[] = models.map((m) => ({
-            model: m,
-            response: `${m} explanation:\nPACT is a structured execution model.\nIt ensures deterministic behavior.`,
-          }));
-
-          return {
-            ...c,
-            status: "idle",
-            response: results[0]?.response || "",
-            history: [
-              ...c.history,
-              {
-                runId,
-                compiledPrompt: "",
-                results,
-              },
-            ],
-          };
-        })
-      );
-    }, 800);
   };
 
-  // 🔥 Diff helper
-  const computeDiff = (results: ModelResult[]) => {
-    const linesPerModel = results.map((r) =>
-      r.response.split("\n")
-    );
-
-    const maxLines = Math.max(...linesPerModel.map((l) => l.length));
-
-    const rows = [];
-
-    for (let i = 0; i < maxLines; i++) {
-      const row = linesPerModel.map((lines) => lines[i] || "");
-
-      const allEqual = row.every((v) => v === row[0]);
-
-      rows.push({ row, allEqual });
+  const compareSelected = () => {
+    if (selectedRuns.length < 2) {
+      alert("Select at least two runs to compare");
+      return;
     }
 
-    return rows;
+    alert(`Comparing runs: ${selectedRuns.join(", ")}`);
   };
+
+  const Menu = ({ name, children }: any) => (
+    <div className="relative">
+      <div
+        onClick={() =>
+          setMenuOpen(menuOpen === name ? null : name)
+        }
+        className="cursor-pointer hover:bg-gray-800 px-2 rounded"
+      >
+        {name}
+      </div>
+
+      {menuOpen === name && (
+        <div className="absolute top-6 left-0 bg-gray-900 border border-gray-700 rounded shadow z-50 min-w-[180px]">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+
+  const MenuItem = ({ onClick, children }: any) => (
+    <div
+      onClick={() => {
+        onClick();
+        setMenuOpen(null);
+      }}
+      className="px-4 py-2 hover:bg-gray-800 cursor-pointer"
+    >
+      {children}
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
 
-      {/* HEADER */}
-      <div className="h-12 flex items-center px-4 border-b border-gray-800 justify-between">
-        <div>PACT Notebook</div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowInternal((v) => !v)}
-            className="px-3 py-1 bg-purple-600 rounded text-sm"
-          >
-            {showInternal ? "Internal" : "External"}
-          </button>
-
-          <button
-            onClick={createCell}
-            className="px-3 py-1 bg-green-600 rounded text-sm"
-          >
-            + New Prompt
-          </button>
-        </div>
+      {/* MENU */}
+      <div className="h-10 flex items-center px-4 border-b border-gray-800 gap-6 text-sm">
+        <Menu name="File"><MenuItem onClick={newPrompt}>New Prompt</MenuItem></Menu>
+        <Menu name="Edit"><MenuItem onClick={editPrompt}>Edit Prompt</MenuItem></Menu>
+        <Menu name="Run"><MenuItem onClick={runCell}>Execute</MenuItem></Menu>
+        <Menu name="Compare"><MenuItem onClick={compareSelected}>Compare Selected</MenuItem></Menu>
+        <Menu name="View"><MenuItem onClick={toggleView}>Toggle Normal / Raw</MenuItem></Menu>
       </div>
 
-      {/* MAIN */}
       <div className="flex flex-1">
 
         {/* LEFT */}
@@ -197,135 +200,91 @@ export default function App() {
             <div
               key={c.id}
               onClick={() => setActiveIndex(i)}
-              className={`p-2 ${i === activeIndex ? "bg-gray-800" : ""}`}
+              className={`p-2 cursor-pointer ${
+                i === activeIndex ? "bg-gray-800" : ""
+              }`}
             >
               {c.id}
             </div>
           ))}
         </div>
 
-        {/* CENTER */}
-        <div className="flex-1 p-4">
+        {/* RIGHT */}
+        <div className="flex-1 p-6">
 
-          <div className="bg-gray-900 p-4 rounded">
-
-            {/* MODE */}
-            <div className="mb-3 flex gap-2">
-              <button
-                onClick={() => setMode("single")}
-                className={activeCell.mode === "single" ? "bg-blue-600 px-2" : "bg-gray-800 px-2"}
-              >
-                Single
-              </button>
-              <button
-                onClick={() => setMode("compare")}
-                className={activeCell.mode === "compare" ? "bg-blue-600 px-2" : "bg-gray-800 px-2"}
-              >
-                Compare
-              </button>
-            </div>
-
-            {/* MODELS */}
-            {activeCell.mode === "single" && (
-              <div className="mb-3 flex gap-2">
-                {ALL_MODELS.map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => selectModel(m)}
-                    className={activeCell.selectedModel === m ? "bg-blue-600 px-2" : "bg-gray-800 px-2"}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {activeCell.mode === "compare" && (
-              <div className="mb-3 flex gap-2">
-                {ALL_MODELS.map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => toggleCompareModel(m)}
-                    className={activeCell.compareModels.includes(m) ? "bg-green-600 px-2" : "bg-gray-800 px-2"}
-                  >
-                    {m}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* PROMPT */}
-            <div className="mb-4">{activeCell.prompt}</div>
-
-            {/* HISTORY */}
-            {activeCell.history.map((run) => {
-              const expanded = expandedRunId === run.runId;
-
-              return (
-                <div key={run.runId} className="mb-4">
-
-                  <div
-                    onClick={() =>
-                      setExpandedRunId(expanded ? null : run.runId)
-                    }
-                    className="cursor-pointer text-gray-400"
-                  >
-                    Run {run.runId} →
-                  </div>
-
-                  {expanded && (
-                    <div className="mt-2">
-
-                      {/* HEADERS */}
-                      <div className="grid grid-cols-3 gap-2 mb-2">
-                        {run.results.map((r) => (
-                          <div key={r.model} className="text-blue-400 text-sm">
-                            {r.model}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* DIFF TABLE */}
-                      {computeDiff(run.results).map((row, idx) => (
-                        <div key={idx} className="grid grid-cols-3 gap-2">
-                          {row.row.map((cell, i) => (
-                            <div
-                              key={i}
-                              className={`p-1 text-sm ${
-                                row.allEqual
-                                  ? "text-gray-500"
-                                  : "text-red-300"
-                              }`}
-                            >
-                              {cell}
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-
-                    </div>
-                  )}
-
-                </div>
-              );
-            })}
-
+          <div className="text-sm text-gray-400 mb-2">
+            {isEditing
+              ? `Draft (next run → v${activeCell.version + 1})`
+              : `Executed Prompt (v${activeCell.version})`}
           </div>
 
+          {showRaw ? (
+            <div className="text-purple-300 whitespace-pre-wrap">
+              {activeCell.history.length
+                ? activeCell.history.at(-1)?.response
+                : "Run this prompt to see its raw view"}
+            </div>
+          ) : isEditing ? (
+            <textarea
+              value={activeCell.prompt}
+              onChange={(e) =>
+                setCells((prev) =>
+                  prev.map((c, i) =>
+                    i === activeIndex
+                      ? { ...c, prompt: e.target.value }
+                      : c
+                  )
+                )
+              }
+              className="w-full h-24 bg-gray-900 border border-gray-700 rounded p-2 mb-4"
+            />
+          ) : (
+            <div className="mb-4 bg-gray-900/40 p-2 rounded">
+              {activeCell.prompt}
+            </div>
+          )}
+
+          {/* 🔥 STRONG VISUAL CARDS */}
+          {activeCell.history.map((run, i) => (
+            <div
+              key={run.runId}
+              className={`
+                mb-4 rounded-lg flex gap-3
+                border border-gray-600
+                bg-gray-900
+                shadow-md
+                ${
+                  selectedRuns.includes(run.runId)
+                    ? "ring-2 ring-blue-500"
+                    : "hover:ring-1 hover:ring-blue-500/40"
+                }
+                transition
+              `}
+            >
+              {/* LEFT ACCENT BAR */}
+              <div className="w-1 bg-blue-500 rounded-l-lg" />
+
+              <div className="p-3 flex gap-3 w-full">
+                <input
+                  type="checkbox"
+                  checked={selectedRuns.includes(run.runId)}
+                  onChange={() => toggleRunSelection(run.runId)}
+                />
+
+                <div>
+                  <div className="text-xs text-gray-400 mb-1">
+                    Run #{i + 1} → v{run.version}
+                  </div>
+                  <div className="text-sm whitespace-pre-wrap">
+                    {run.response}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
         </div>
-
       </div>
-
-      {/* FOOTER */}
-      <div className="h-14 border-t border-gray-800 flex items-center px-4 justify-end">
-        <button
-          onClick={runCell}
-          className="px-4 py-1 bg-blue-600 rounded"
-        >
-          Run
-        </button>
-      </div>
-
     </div>
   );
 }
